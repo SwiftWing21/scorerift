@@ -307,12 +307,12 @@ This is the entire product thesis in one example: **neither brain alone is suffi
 
 ## Desktop GUI
 
-[ScoreRift Studio](https://github.com/SwiftWing21/scorerift-studio) — native desktop app for configuring, running, and reviewing audits without the CLI. Open any folder, pick a preset, run audits, edit manual grades, export reports.
+[ScoreRift Studio](https://github.com/mbachaud/scorerift-studio) — native desktop app for configuring, running, and reviewing audits without the CLI. Open any folder, pick a preset, run audits, edit manual grades, export reports.
 
 ## Origin
 
-Extracted from [BigEd CC](https://github.com/SwiftWing21/Education) after production use on a 125-skill AI fleet with 12 audit dimensions, 4 tiers, and automated daily/weekly scheduling. The divergence detection pattern caught real issues that neither automated tests nor manual reviews caught alone.
+Extracted from [BigEd CC](https://github.com/mbachaud/Education) after production use on a 125-skill AI fleet with 12 audit dimensions, 4 tiers, and automated daily/weekly scheduling. The divergence detection pattern caught real issues that neither automated tests nor manual reviews caught alone.
 
 ## License
 
-MIT
+Apache-2.0 — see [LICENSE](LICENSE). Copyright 2025-2026 Michael Bachaud (mbachaud).

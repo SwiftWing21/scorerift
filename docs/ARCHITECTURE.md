@@ -191,6 +191,6 @@ scorerift/
 
 ## Origin
 
-Extracted from BigEd CC (`github.com/SwiftWing21/Education`) after production use on a 125-skill AI fleet. The BigEd implementation lives in `fleet/audit_scorer.py` (1,088 lines) and uses all 12 dimensions across 4 tiers with Dr. Ders scheduling daily/weekly runs.
+Extracted from BigEd CC (`github.com/mbachaud/Education`) after production use on a 125-skill AI fleet. The BigEd implementation lives in `fleet/audit_scorer.py` (1,088 lines) and uses all 12 dimensions across 4 tiers with Dr. Ders scheduling daily/weekly runs.
 
 The extraction preserves the battle-tested core while making it configurable for any project type.

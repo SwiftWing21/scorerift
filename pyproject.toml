@@ -48,9 +48,9 @@ dev = [
 scorerift = "scorerift.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/SwiftWing21/scorerift"
-Repository = "https://github.com/SwiftWing21/scorerift"
-Issues = "https://github.com/SwiftWing21/scorerift/issues"
+Homepage = "https://github.com/mbachaud/scorerift"
+Repository = "https://github.com/mbachaud/scorerift"
+Issues = "https://github.com/mbachaud/scorerift/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scorerift"]
