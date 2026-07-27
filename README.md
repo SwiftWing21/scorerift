@@ -81,7 +81,7 @@ That `DIVERGED` on security is the system working. Auto scored 0.85 (A-), but so
 |-------|----------------|
 | Functional test scoring | Grade inflation (scores from tests, not file existence) |
 | Grade expiry | Stale optimism (old manual grades display as expired) |
-| Cross-validation | Optimistic reviewers (divergence when manual >> auto) |
+| Divergence check | Optimistic reviewers (manual >> auto by >0.15, untuned default) |
 | Git diff detection | Silent drift (code changed since last manual review) |
 | External scanners | Blind spots (semgrep, PyPI drift — independent signals) |
 | Ratchet rules | Backsliding (score can't drop below target without explicit edit) |
@@ -139,14 +139,14 @@ This reframes the entire project: not "alternative to SonarQube" but **"the laye
 
 ## LLM-Powered Reviews (The Right Brain On Demand)
 
-The manual grade doesn't have to come from you. Point an LLM at any dimension and get a structured review with cross-validated findings.
+The manual grade doesn't have to come from you. Point an LLM at any dimension and get a structured review with multi-lens agreement scoring.
 
 **Three review modes:**
 
 | Mode | What it does | API calls | Best for |
 |------|-------------|-----------|----------|
 | **Single** | One provider, one pass | 1 | Quick sanity check |
-| **Swarm** | One provider, 4 specialized lenses (security auditor, performance engineer, architect, compliance auditor) — findings cross-validated | 4 | Deep single-dimension review |
+| **Swarm** | One provider, 4 specialized lenses (security auditor, performance engineer, architect, compliance auditor) — findings scored by lens agreement | 4 | Deep single-dimension review |
 | **Consensus** | Same prompt to Claude + Gemini + OpenAI, compare scores | 1 per provider | When you want multiple opinions |
 
 **Cost scales with context size.** The system prompt is ~200 tokens. Your cost is driven by how much code/context you pass in:
@@ -160,9 +160,11 @@ The manual grade doesn't have to come from you. Point an LLM at any dimension an
 Every review logs exact input/output tokens and cost in the DB. Use `cache.stats()` to see cumulative spend. Cached reviews (7-day TTL) cost nothing on repeat runs.
 
 ```python
-# Trigger a swarm review — 4 lenses review independently, then cross-validate
+# Trigger a swarm review — 4 lenses review separately, then score agreement
 result = engine.review_dimension("security", context=source_code, mode="swarm")
-# result["cross_validated"] = findings 2+ lenses agree on (high confidence)
+# result["cross_validated"] = findings 2+ lenses agree on (higher confidence)
+#   (field name kept for back-compat; it measures lens agreement, not
+#    statistical cross-validation — see the caveat below)
 # result["single_source"] = findings from only 1 lens (investigate)
 
 # Multi-provider consensus — do Claude and Gemini agree?
@@ -177,7 +179,18 @@ The review result automatically updates the sidecar with `source: "llm_review"`.
 2. LLM review vs auto score (does the model see something automation missed?)
 3. LLM review vs LLM review (do Claude and Gemini disagree? That's a signal too)
 
-**Swarm lenses** are where the magic happens. Four specialized reviewers look at the same code from different angles — a security auditor catches different things than a performance engineer. Findings that appear in 2+ lenses are **cross-validated** (high confidence). Findings from only one lens are flagged as single-source (investigate, but lower confidence).
+**Swarm lenses** give you perspective diversity. Four specialized reviewers look at the same code from different angles — a security auditor catches different things than a performance engineer. Findings that appear in 2+ lenses score as **multi-lens agreement** (higher confidence); findings from only one lens are flagged single-source (investigate, but lower confidence).
+
+> **What this is not.** Four personas of the same model agreeing is *not*
+> cross-validation in the statistical sense, and it is not four independent
+> opinions. They share a base model, a prompt scaffold, and the same blind
+> spots, so their errors are correlated — agreement raises confidence, but it
+> cannot establish correctness, and all four can be confidently wrong together.
+> Read it as a cheap prioritization signal, not as verification. Consensus mode
+> (different providers) is the less-correlated option, and even there the
+> divergence is the product, not the agreement. The 0.15 divergence threshold
+> and the confidence values are untuned defaults — calibrate them for your
+> domain before trusting them.
 
 **Built-in cost safety:**
 - Local result cache (7-day TTL) — same context + same provider = cached, no API call

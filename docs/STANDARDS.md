@@ -153,7 +153,7 @@ These layers work together to prevent both false positives (flagging something t
 |-------|-------------|-----------------|
 | 1. Functional test scoring | Score from actual tests, not file existence | Grade inflation |
 | 2. Grade expiry | Manual grades expire after N days if flagged | Stale optimism |
-| 3. Cross-validation | Divergence when manual exceeds auto by >0.15 | Optimistic reviewers |
+| 3. Divergence check | Manual exceeds auto by >0.15 (untuned default) | Optimistic reviewers |
 | 4. Git diff detection | Flags unreviewed changes since last manual grade | Silent drift |
 | 5. External scanners | Independent signals (semgrep, PyPI, GitHub) | Blind spots |
 | 6. Ratchet rules | Score can't drop below floor without explicit edit | Backsliding |
