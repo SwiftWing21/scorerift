@@ -129,3 +129,31 @@ class TestHealthCheck:
         health = tmp_engine.health_check()
         assert health["ok"] is False
         assert "failing" in health["failing"]
+
+
+class TestRelativePathsWithTarget:
+    def test_relative_db_resolves_against_invoke_cwd_not_target(self, tmp_path, monkeypatch):
+        """A relative db_path must land in the invoking CWD, not inside target_path.
+
+        run_tier chdirs into target_path; the lazily-opened DB and sidecar
+        must not resolve their relative paths against the target directory.
+        """
+        invoke = tmp_path / "invoke"
+        target = tmp_path / "target"
+        invoke.mkdir()
+        target.mkdir()
+        monkeypatch.chdir(invoke)
+
+        engine = AuditEngine(
+            db_path="x.db",
+            baseline_path="x.json",
+            target_path=str(target),
+        )
+        engine.register(Dimension(
+            name="alpha", check=lambda: (1.0, {}), tier=Tier.LIGHT,
+        ))
+        results = engine.run_tier("light")
+
+        assert len(results) == 1
+        assert (invoke / "x.db").exists()
+        assert not (target / "x.db").exists()

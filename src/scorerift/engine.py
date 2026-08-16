@@ -95,6 +95,11 @@ class AuditEngine:
 
     def __post_init__(self) -> None:
         self.target_path = str(Path(self.target_path).resolve())
+        # Resolve DB/sidecar paths now: run_tier/run_dimension chdir into
+        # target_path, and the lazily-opened DB would otherwise resolve a
+        # relative path against the target instead of the invoking CWD.
+        self.db_path = str(Path(self.db_path).resolve())
+        self.baseline_path = str(Path(self.baseline_path).resolve())
 
     @property
     def db(self) -> AuditDB:
