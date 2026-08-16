@@ -138,6 +138,16 @@ class TestPytestCollectionFailure:
         assert "tool_failure" not in detail
         assert detail["total"] == 0
 
+    def test_no_tests_collected_records_active_marker_filter(self, monkeypatch):
+        """Exit 5 with a markers filter active may mean a typo'd expression
+        deselected everything — record the expression so the 0.0 is auditable."""
+        monkeypatch.setenv("SCORERIFT_PYTEST_MARKERS", "not slwo")
+        monkeypatch.setattr(python_project, "run_tool",
+                            self._fake(5, "no tests ran in 0.01s"))
+        score, detail = python_project._check_test_coverage()
+        assert score == 0.0
+        assert detail["markers"] == "not slwo"
+
     def test_exit_zero_but_unparseable_is_tool_failure(self, monkeypatch):
         monkeypatch.setattr(python_project, "run_tool", self._fake(0, "garbage"))
         score, detail = python_project._check_test_coverage()

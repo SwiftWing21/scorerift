@@ -163,6 +163,14 @@ class TestSemgrepIntegration:
         assert score == 0.5
         assert "not installed" in detail["note"]
 
+    def test_not_installed_is_tool_failure(self):
+        """A missing semgrep binary is absence of evidence — the neutral 0.5
+        must carry the tool_failure sentinel so it cannot fail health."""
+        sg = SemgrepIntegration()
+        with patch("subprocess.run", side_effect=FileNotFoundError("semgrep")):
+            score, detail = sg.scan()
+        assert detail["tool_failure"] is True
+
     def test_scan_with_findings(self):
         sg = SemgrepIntegration()
         findings = {

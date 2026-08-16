@@ -58,9 +58,14 @@ def _check_test_coverage() -> tuple[float, dict]:
         total = passed + failed
         if total == 0:
             # Exit 5 = no tests collected: genuine evidence of zero coverage.
+            # With a markers filter active, record the expression — a typo'd
+            # marker deselecting everything looks identical to an empty suite.
             if result.returncode == 5:
-                return 0.0, {"passed": 0, "failed": 0, "total": 0,
-                             "note": "no tests collected"}
+                detail = {"passed": 0, "failed": 0, "total": 0,
+                          "note": "no tests collected"}
+                if markers:
+                    detail["markers"] = markers
+                return 0.0, detail
             # Broken conftest, usage error, pytest internal error: no evidence.
             return 0.5, {"error": f"pytest exit {result.returncode} with no parseable results",
                          "stdout_tail": result.stdout[-300:], "tool_failure": True}
