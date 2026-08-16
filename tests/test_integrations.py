@@ -118,6 +118,15 @@ class TestOllamaIntegration:
         assert score == 0.0
         assert "error" in detail
 
+    def test_connection_error_is_evidence_not_tool_failure(self):
+        """Unreachable Ollama is the check's documented failing verdict (0.0),
+        not a tool failure — it must never carry the tool_failure sentinel."""
+        oll = OllamaIntegration()
+        with patch("urllib.request.urlopen", side_effect=ConnectionError("refused")):
+            score, detail = oll.check_health()
+        assert score == 0.0
+        assert "tool_failure" not in detail
+
 
 # ── PyPI ────────────────────────────────────────────────────────────
 

@@ -49,9 +49,9 @@ def _check_test_coverage() -> tuple[float, dict]:
         total = passed + failed
         return (passed / total if total else 0.0), {"passed": passed, "failed": failed, "total": total}
     except subprocess.TimeoutExpired as e:
-        return 0.5, {"error": str(e), "timeout": True}
+        return 0.5, {"error": str(e), "timeout": True, "tool_failure": True}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_lint_score() -> tuple[float, dict]:
@@ -66,7 +66,7 @@ def _check_lint_score() -> tuple[float, dict]:
         score = max(0.0, 1.0 - errors * 0.02)
         return score, {"errors": errors}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_type_coverage() -> tuple[float, dict]:
@@ -81,7 +81,7 @@ def _check_type_coverage() -> tuple[float, dict]:
         score = max(0.0, 1.0 - errors * 0.01)
         return score, {"errors": errors}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_dep_freshness() -> tuple[float, dict]:
@@ -102,7 +102,7 @@ def _check_dep_freshness() -> tuple[float, dict]:
                  "latest": p.get("latest_version", "?")} for p in outdated[:5]]
         return score, {"outdated": len(outdated), "total": total_pkgs, "top5": top5}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_doc_coverage() -> tuple[float, dict]:
@@ -147,7 +147,7 @@ def _check_doc_coverage() -> tuple[float, dict]:
             "files_scanned": len(py_files),
         }
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_security() -> tuple[float, dict]:
@@ -178,7 +178,7 @@ def _check_security() -> tuple[float, dict]:
 
         return 0.5, {"note": "Neither semgrep nor ruff available for security scanning"}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_complexity() -> tuple[float, dict]:
@@ -247,7 +247,7 @@ def _check_complexity() -> tuple[float, dict]:
             "max_complexity": max(complexities),
         }
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_import_hygiene() -> tuple[float, dict]:
@@ -265,7 +265,7 @@ def _check_import_hygiene() -> tuple[float, dict]:
         score = max(0.0, 1.0 - violations * 0.03)
         return score, {"violations": violations}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 # ── Dimension Definitions ────────────────────────────────────────────

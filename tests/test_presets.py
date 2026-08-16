@@ -65,6 +65,7 @@ class TestCheckFailureNeutrality:
         assert score == 0.5
         assert detail["timeout"] is True
         assert "error" in detail
+        assert detail["tool_failure"] is True
 
     def test_pytest_error_returns_neutral_score(self, monkeypatch):
         def fake_run_tool(cmd, timeout=60, cwd=None):
@@ -74,6 +75,7 @@ class TestCheckFailureNeutrality:
         assert score == 0.5
         assert "error" in detail
         assert "timeout" not in detail
+        assert detail["tool_failure"] is True
 
     @pytest.mark.parametrize("check_name", [
         "_check_lint_score",
@@ -89,6 +91,7 @@ class TestCheckFailureNeutrality:
         score, detail = getattr(python_project, check_name)()
         assert score == 0.5, f"{check_name} scored a tool crash as {score}"
         assert "error" in detail
+        assert detail["tool_failure"] is True
 
     def test_doc_coverage_error_returns_neutral_score(self, monkeypatch):
         def boom(*args, **kwargs):
@@ -97,6 +100,7 @@ class TestCheckFailureNeutrality:
         score, detail = python_project._check_doc_coverage()
         assert score == 0.5
         assert "error" in detail
+        assert detail["tool_failure"] is True
 
 
 class TestPytestTimeoutConfig:

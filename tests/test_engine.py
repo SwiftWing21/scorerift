@@ -113,7 +113,8 @@ class TestToolFailureConfidenceDrop:
     def test_error_detail_zeroes_confidence_and_divergence(self, tmp_engine):
         tmp_engine.register(Dimension(
             name="timed_out",
-            check=lambda: (0.5, {"error": "pytest timed out after 120s", "timeout": True}),
+            check=lambda: (0.5, {"error": "pytest timed out after 120s",
+                                 "timeout": True, "tool_failure": True}),
             confidence=0.95,
             tier=Tier.LIGHT,
         ))
@@ -122,6 +123,19 @@ class TestToolFailureConfidenceDrop:
         r = results[0]
         assert r.divergent is False
         assert r.auto_confidence == 0.0
+
+    def test_error_key_alone_is_evidence_and_keeps_confidence(self, tmp_engine):
+        """An "error" key without the tool_failure sentinel is the check's own
+        verdict (e.g. Ollama unreachable scores 0.0), not a tool failure."""
+        tmp_engine.register(Dimension(
+            name="ollama_style",
+            check=lambda: (0.0, {"error": "connection refused", "note": "Ollama not reachable"}),
+            confidence=0.90,
+            tier=Tier.LIGHT,
+        ))
+        results = tmp_engine.run_tier("light")
+        assert results[0].auto_confidence == 0.90
+        assert results[0].auto_score == 0.0
 
     def test_check_exception_does_not_diverge(self, tmp_engine):
         def broken():
@@ -137,7 +151,8 @@ class TestToolFailureConfidenceDrop:
     def test_run_dimension_error_detail_does_not_diverge(self, tmp_engine):
         tmp_engine.register(Dimension(
             name="timed_out",
-            check=lambda: (0.5, {"error": "pytest timed out after 120s", "timeout": True}),
+            check=lambda: (0.5, {"error": "pytest timed out after 120s",
+                                 "timeout": True, "tool_failure": True}),
             confidence=0.95,
             tier=Tier.LIGHT,
         ))
@@ -187,7 +202,8 @@ class TestHealthCheck:
         """A tool-failure neutral 0.5 carries no evidence — it must not fail health."""
         tmp_engine.register(Dimension(
             name="timed_out",
-            check=lambda: (0.5, {"error": "pytest timed out after 120s", "timeout": True}),
+            check=lambda: (0.5, {"error": "pytest timed out after 120s",
+                                 "timeout": True, "tool_failure": True}),
             confidence=0.95,
             tier=Tier.LIGHT,
         ))
@@ -195,6 +211,20 @@ class TestHealthCheck:
         health = tmp_engine.health_check()
         assert health["ok"] is True
         assert "timed_out" not in health["failing"]
+
+    def test_error_evidence_still_fails_health(self, tmp_engine):
+        """A check that scores a real 0.0 with an error message (e.g. a down
+        service) is evidence of failure and must fail health."""
+        tmp_engine.register(Dimension(
+            name="down_service",
+            check=lambda: (0.0, {"error": "connection refused"}),
+            confidence=0.90,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.run_tier("light")
+        health = tmp_engine.health_check()
+        assert health["ok"] is False
+        assert "down_service" in health["failing"]
 
 
 class TestRelativePathsWithTarget:

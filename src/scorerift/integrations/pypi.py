@@ -77,7 +77,7 @@ class PyPIIntegration:
 
         except Exception as e:
             log.warning("PyPI freshness check failed: %s", e)
-            return 0.5, {"error": str(e)}
+            return 0.5, {"error": str(e), "tool_failure": True}
 
     @staticmethod
     def _version_score(installed: str, latest: str) -> float:

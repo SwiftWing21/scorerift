@@ -53,7 +53,7 @@ class GitHubIntegration:
             }
         except Exception as e:
             log.warning("CI status check failed: %s", e)
-            return 0.5, {"error": str(e)}
+            return 0.5, {"error": str(e), "tool_failure": True}
 
     def check_open_bugs(self) -> tuple[float, dict[str, Any]]:
         """Score: 1.0 - (open_bugs * 0.05), clamped to [0.0, 1.0]."""
@@ -66,7 +66,7 @@ class GitHubIntegration:
             return score, {"open_bugs": count}
         except Exception as e:
             log.warning("Open bugs check failed: %s", e)
-            return 0.5, {"error": str(e)}
+            return 0.5, {"error": str(e), "tool_failure": True}
 
     def check_stale_prs(self) -> tuple[float, dict[str, Any]]:
         """Score: 1.0 - (stale_prs * 0.1), clamped. Stale = >14 days old."""
@@ -83,7 +83,7 @@ class GitHubIntegration:
             return score, {"stale_prs": len(stale), "total_open": len(data)}
         except Exception as e:
             log.warning("Stale PRs check failed: %s", e)
-            return 0.5, {"error": str(e)}
+            return 0.5, {"error": str(e), "tool_failure": True}
 
     def _get(self, path: str) -> Any:
         """Make an authenticated GET request to the GitHub API."""

@@ -35,11 +35,13 @@ CONFIDENCE_FLOOR = 0.5
 def _effective_confidence(confidence: float, auto_detail: dict[str, Any]) -> float:
     """Confidence for one sample: zero when the check tool itself failed.
 
-    Checks report tool failure via an "error" key and score a neutral 0.5;
-    that placeholder is absence of evidence and must not carry the
-    dimension's static confidence into divergence classification.
+    Checks opt in by setting "tool_failure": True in their detail dict and
+    scoring a neutral 0.5; that placeholder is absence of evidence and must
+    not carry the dimension's static confidence into divergence
+    classification. A plain "error" key is NOT enough — some checks (e.g.
+    Ollama availability) use it alongside a genuine failing verdict.
     """
-    return 0.0 if "error" in auto_detail else confidence
+    return 0.0 if auto_detail.get("tool_failure") else confidence
 
 
 @dataclass
@@ -171,7 +173,7 @@ class AuditEngine:
                     except Exception as exc:
                         log.warning("Dimension %s check failed: %s", name, exc)
                         auto_score = 0.5
-                        auto_detail = {"error": str(exc)}
+                        auto_detail = {"error": str(exc), "tool_failure": True}
 
                     confidence = _effective_confidence(dim.confidence, auto_detail)
 
@@ -236,7 +238,7 @@ class AuditEngine:
             except Exception as exc:
                 log.warning("Dimension %s check failed: %s", name, exc)
                 auto_score = 0.5
-                auto_detail = {"error": str(exc)}
+                auto_detail = {"error": str(exc), "tool_failure": True}
             finally:
                 os.chdir(old_cwd)
 
