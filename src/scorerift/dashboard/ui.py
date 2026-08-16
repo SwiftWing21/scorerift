@@ -613,7 +613,10 @@ function buildScoreRow(s) {
   const pctW = Math.round(s.auto_score * 100);
   const manual = s.manual_grade || '\\u2014';
   let status = 'ok', statusLabel = 'OK';
-  if (s.auto_score <= 0.5) { status = 'fail'; statusLabel = 'FAIL'; }
+  /* Mirror health_check: a failing score only counts when trusted; an
+     untrusted one (tool-failure placeholder) is absence of evidence. */
+  if (s.auto_score <= 0.5 && (s.auto_confidence || 0) >= 0.5) { status = 'fail'; statusLabel = 'FAIL'; }
+  else if (s.auto_score <= 0.5) { status = 'ack'; statusLabel = 'NO EVIDENCE'; }
   else if (s.divergent && !s.acknowledged) { status = 'warn'; statusLabel = 'DIVERGED'; }
   else if (s.acknowledged) { status = 'ack'; statusLabel = 'ACK'; }
   const conf = s.auto_confidence || 0;
