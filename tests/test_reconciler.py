@@ -45,3 +45,11 @@ class TestClassifyStatus:
 
     def test_ok_when_no_manual(self):
         assert classify_status(0.85, None, confidence=0.95) == "ok"
+
+    def test_failing_score_low_confidence_is_review_not_fail(self):
+        """An untrusted failing score can't hard-fail — flag for review instead."""
+        assert classify_status(0.30, 0.90, confidence=0.30) == "review_suggested"
+
+    def test_failing_score_zero_confidence_no_manual_is_review(self):
+        """Tool-failure placeholder (0.5 at confidence 0.0) must not read as failing."""
+        assert classify_status(0.5, None, confidence=0.0) == "review_suggested"

@@ -65,7 +65,11 @@ def classify_status(
     Returns one of: "ok", "warn", "review_suggested", "fail".
     """
     if is_failing(auto_score):
-        return "fail"
+        # Below the confidence floor the score is not evidence of failure
+        # (e.g. a neutral placeholder from a tool crash) — ask for review.
+        if confidence >= confidence_floor:
+            return "fail"
+        return "review_suggested"
     if manual_score is None:
         return "ok"
     gap = abs(auto_score - manual_score)

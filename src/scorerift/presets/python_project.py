@@ -8,30 +8,78 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from scorerift import Dimension, Tier
 from scorerift.presets._check_utils import run_tool, tool_available
 
+log = logging.getLogger("scorerift")
+
+# Full-suite runs on real projects routinely take several minutes; 120s
+# produced false timeouts. Override via SCORERIFT_PYTEST_TIMEOUT.
+DEFAULT_PYTEST_TIMEOUT = 600
+
+
+def _pytest_timeout() -> int:
+    raw = os.environ.get("SCORERIFT_PYTEST_TIMEOUT", "")
+    if not raw:
+        return DEFAULT_PYTEST_TIMEOUT
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        log.warning("Invalid SCORERIFT_PYTEST_TIMEOUT=%r; using default %ds",
+                    raw, DEFAULT_PYTEST_TIMEOUT)
+        return DEFAULT_PYTEST_TIMEOUT
+    return value
+
+
 # ── Check functions ──────────────────────────────────────────────────
 
 def _check_test_coverage() -> tuple[float, dict]:
-    """Run pytest and return pass rate."""
+    """Run pytest and return pass rate.
+
+    SCORERIFT_PYTEST_TIMEOUT overrides the suite timeout (seconds);
+    SCORERIFT_PYTEST_MARKERS passes a `-m` marker expression (e.g. "not slow").
+    """
+    cmd = ["python", "-m", "pytest", "--tb=no", "-q"]
+    markers = os.environ.get("SCORERIFT_PYTEST_MARKERS")
+    if markers:
+        cmd += ["-m", markers]
     try:
-        result = run_tool(["python", "-m", "pytest", "--tb=no", "-q"], timeout=120)  # noqa: S607
+        result = run_tool(cmd, timeout=_pytest_timeout())  # noqa: S607
         passed = int(m.group(1)) if (m := re.search(r"(\d+) passed", result.stdout)) else 0
         failed = int(m.group(1)) if (m := re.search(r"(\d+) failed", result.stdout)) else 0
         total = passed + failed
-        return (passed / total if total else 0.0), {"passed": passed, "failed": failed, "total": total}
+        if total == 0:
+            # Exit 5 = no tests collected: genuine evidence of zero coverage.
+            # With a markers filter active, record the expression — a typo'd
+            # marker deselecting everything looks identical to an empty suite.
+            if result.returncode == 5:
+                detail = {"passed": 0, "failed": 0, "total": 0,
+                          "note": "no tests collected"}
+                if markers:
+                    detail["markers"] = markers
+                return 0.0, detail
+            # Broken conftest, usage error, pytest internal error: no evidence.
+            return 0.5, {"error": f"pytest exit {result.returncode} with no parseable results",
+                         "stdout_tail": result.stdout[-300:], "tool_failure": True}
+        return passed / total, {"passed": passed, "failed": failed, "total": total}
+    except subprocess.TimeoutExpired as e:
+        return 0.5, {"error": str(e), "timeout": True, "tool_failure": True}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_lint_score() -> tuple[float, dict]:
     """Run ruff and score based on error count."""
     if not tool_available("ruff"):
-        return 0.5, {"note": "ruff not installed"}
+        return 0.5, {"note": "ruff not installed", "tool_failure": True}
     try:
         result = run_tool(["ruff", "check", ".", "--statistics", "-q"], timeout=60)  # noqa: S607
         if result.returncode == 0:
@@ -40,13 +88,13 @@ def _check_lint_score() -> tuple[float, dict]:
         score = max(0.0, 1.0 - errors * 0.02)
         return score, {"errors": errors}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_type_coverage() -> tuple[float, dict]:
     """Run mypy and score based on error count."""
     if not tool_available("mypy"):
-        return 0.5, {"note": "mypy not installed"}
+        return 0.5, {"note": "mypy not installed", "tool_failure": True}
     try:
         result = run_tool(["mypy", ".", "--no-error-summary"], timeout=120)  # noqa: S607
         if result.returncode == 0:
@@ -55,7 +103,7 @@ def _check_type_coverage() -> tuple[float, dict]:
         score = max(0.0, 1.0 - errors * 0.01)
         return score, {"errors": errors}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_dep_freshness() -> tuple[float, dict]:
@@ -63,7 +111,7 @@ def _check_dep_freshness() -> tuple[float, dict]:
     try:
         result = run_tool(["pip", "list", "--outdated", "--format=json"], timeout=30)  # noqa: S607
         if result.returncode != 0:
-            return 0.5, {"note": "pip list failed", "stderr": result.stderr[:200]}
+            return 0.5, {"note": "pip list failed", "stderr": result.stderr[:200], "tool_failure": True}
         outdated = json.loads(result.stdout) if result.stdout.strip() else []
         total_pkgs = len(json.loads(
             run_tool(["pip", "list", "--format=json"], timeout=15).stdout  # noqa: S607
@@ -76,7 +124,7 @@ def _check_dep_freshness() -> tuple[float, dict]:
                  "latest": p.get("latest_version", "?")} for p in outdated[:5]]
         return score, {"outdated": len(outdated), "total": total_pkgs, "top5": top5}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_doc_coverage() -> tuple[float, dict]:
@@ -121,7 +169,7 @@ def _check_doc_coverage() -> tuple[float, dict]:
             "files_scanned": len(py_files),
         }
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_security() -> tuple[float, dict]:
@@ -150,9 +198,9 @@ def _check_security() -> tuple[float, dict]:
             score = max(0.0, 1.0 - findings * 0.05)
             return score, {"tool": "ruff-S", "findings": findings}
 
-        return 0.5, {"note": "Neither semgrep nor ruff available for security scanning"}
+        return 0.5, {"note": "Neither semgrep nor ruff available for security scanning", "tool_failure": True}
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_complexity() -> tuple[float, dict]:
@@ -221,13 +269,13 @@ def _check_complexity() -> tuple[float, dict]:
             "max_complexity": max(complexities),
         }
     except Exception as e:
-        return 0.5, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 def _check_import_hygiene() -> tuple[float, dict]:
     """Check for import order violations and unused imports via ruff."""
     if not tool_available("ruff"):
-        return 0.5, {"note": "ruff not installed"}
+        return 0.5, {"note": "ruff not installed", "tool_failure": True}
     try:
         result = run_tool(
             ["ruff", "check", ".", "--select", "I,F401", "--statistics", "-q"],  # noqa: S607
@@ -239,7 +287,7 @@ def _check_import_hygiene() -> tuple[float, dict]:
         score = max(0.0, 1.0 - violations * 0.03)
         return score, {"violations": violations}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e), "tool_failure": True}
 
 
 # ── Dimension Definitions ────────────────────────────────────────────

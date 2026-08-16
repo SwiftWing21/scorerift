@@ -102,6 +102,74 @@ class TestReconciliation:
         assert len(divs) == 0
 
 
+class TestToolFailureConfidenceDrop:
+    """Tool-failure samples carry no evidence — they must not trigger divergence.
+
+    Repro: a 9-minute suite times out under the pytest check, the check returns
+    a neutral placeholder, and the dimension's static confidence (0.95) would
+    otherwise still mark it DIVERGED against the manual grade.
+    """
+
+    def test_error_detail_zeroes_confidence_and_divergence(self, tmp_engine):
+        tmp_engine.register(Dimension(
+            name="timed_out",
+            check=lambda: (0.5, {"error": "pytest timed out after 120s",
+                                 "timeout": True, "tool_failure": True}),
+            confidence=0.95,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.sidecar.set_grade("timed_out", "S")
+        results = tmp_engine.run_tier("light")
+        r = results[0]
+        assert r.divergent is False
+        assert r.auto_confidence == 0.0
+
+    def test_error_key_alone_is_evidence_and_keeps_confidence(self, tmp_engine):
+        """An "error" key without the tool_failure sentinel is the check's own
+        verdict (e.g. Ollama unreachable scores 0.0), not a tool failure."""
+        tmp_engine.register(Dimension(
+            name="ollama_style",
+            check=lambda: (0.0, {"error": "connection refused", "note": "Ollama not reachable"}),
+            confidence=0.90,
+            tier=Tier.LIGHT,
+        ))
+        results = tmp_engine.run_tier("light")
+        assert results[0].auto_confidence == 0.90
+        assert results[0].auto_score == 0.0
+
+    def test_check_exception_does_not_diverge(self, tmp_engine):
+        def broken():
+            raise RuntimeError("boom")
+        tmp_engine.register(Dimension(
+            name="broken", check=broken, confidence=0.95, tier=Tier.LIGHT,
+        ))
+        tmp_engine.sidecar.set_grade("broken", "S")
+        results = tmp_engine.run_tier("light")
+        assert results[0].divergent is False
+        assert results[0].auto_confidence == 0.0
+
+    def test_run_dimension_error_detail_does_not_diverge(self, tmp_engine):
+        tmp_engine.register(Dimension(
+            name="timed_out",
+            check=lambda: (0.5, {"error": "pytest timed out after 120s",
+                                 "timeout": True, "tool_failure": True}),
+            confidence=0.95,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.sidecar.set_grade("timed_out", "S")
+        r = tmp_engine.run_dimension("timed_out")
+        assert r.divergent is False
+        assert r.auto_confidence == 0.0
+
+    def test_healthy_check_keeps_its_confidence(self, tmp_engine):
+        tmp_engine.register(Dimension(
+            name="healthy", check=lambda: (0.9, {"passed": 9, "total": 10}),
+            confidence=0.95, tier=Tier.LIGHT,
+        ))
+        results = tmp_engine.run_tier("light")
+        assert results[0].auto_confidence == 0.95
+
+
 class TestFeedback:
     def test_record_and_summarize(self, tmp_engine):
         tmp_engine.record_feedback(score=0.8, scope="overall", text="Looks good")
@@ -129,3 +197,59 @@ class TestHealthCheck:
         health = tmp_engine.health_check()
         assert health["ok"] is False
         assert "failing" in health["failing"]
+
+    def test_tool_failure_placeholder_is_not_failing(self, tmp_engine):
+        """A tool-failure neutral 0.5 carries no evidence — it must not fail health."""
+        tmp_engine.register(Dimension(
+            name="timed_out",
+            check=lambda: (0.5, {"error": "pytest timed out after 120s",
+                                 "timeout": True, "tool_failure": True}),
+            confidence=0.95,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.run_tier("light")
+        health = tmp_engine.health_check()
+        assert health["ok"] is True
+        assert "timed_out" not in health["failing"]
+
+    def test_error_evidence_still_fails_health(self, tmp_engine):
+        """A check that scores a real 0.0 with an error message (e.g. a down
+        service) is evidence of failure and must fail health."""
+        tmp_engine.register(Dimension(
+            name="down_service",
+            check=lambda: (0.0, {"error": "connection refused"}),
+            confidence=0.90,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.run_tier("light")
+        health = tmp_engine.health_check()
+        assert health["ok"] is False
+        assert "down_service" in health["failing"]
+
+
+class TestRelativePathsWithTarget:
+    def test_relative_db_resolves_against_invoke_cwd_not_target(self, tmp_path, monkeypatch):
+        """A relative db_path must land in the invoking CWD, not inside target_path.
+
+        run_tier chdirs into target_path; the lazily-opened DB and sidecar
+        must not resolve their relative paths against the target directory.
+        """
+        invoke = tmp_path / "invoke"
+        target = tmp_path / "target"
+        invoke.mkdir()
+        target.mkdir()
+        monkeypatch.chdir(invoke)
+
+        engine = AuditEngine(
+            db_path="x.db",
+            baseline_path="x.json",
+            target_path=str(target),
+        )
+        engine.register(Dimension(
+            name="alpha", check=lambda: (1.0, {}), tier=Tier.LIGHT,
+        ))
+        results = engine.run_tier("light")
+
+        assert len(results) == 1
+        assert (invoke / "x.db").exists()
+        assert not (target / "x.db").exists()

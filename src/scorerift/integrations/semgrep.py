@@ -76,7 +76,8 @@ class SemgrepIntegration:
             }
         except FileNotFoundError:
             log.warning("semgrep not installed — skipping security scan")
-            return 0.5, {"note": "semgrep not installed", "install": "pip install semgrep"}
+            return 0.5, {"note": "semgrep not installed", "install": "pip install semgrep",
+                         "tool_failure": True}
         except Exception as e:
             log.warning("Semgrep scan failed: %s", e)
-            return 0.5, {"error": str(e)}
+            return 0.5, {"error": str(e), "tool_failure": True}
