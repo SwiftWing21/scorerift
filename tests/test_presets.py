@@ -207,6 +207,19 @@ class TestPytestTimeoutConfig:
         python_project._check_test_coverage()
         assert captured["timeout"] == 600
 
+    @pytest.mark.parametrize("raw", ["0", "-5"])
+    def test_nonpositive_env_var_falls_back_to_default(self, captured, monkeypatch, raw):
+        monkeypatch.setenv("SCORERIFT_PYTEST_TIMEOUT", raw)
+        python_project._check_test_coverage()
+        assert captured["timeout"] == 600
+
+    @pytest.mark.parametrize("raw", ["not-a-number", "0"])
+    def test_invalid_env_var_logs_warning(self, captured, monkeypatch, caplog, raw):
+        monkeypatch.setenv("SCORERIFT_PYTEST_TIMEOUT", raw)
+        with caplog.at_level("WARNING", logger="scorerift"):
+            python_project._check_test_coverage()
+        assert any("SCORERIFT_PYTEST_TIMEOUT" in r.message for r in caplog.records)
+
     def test_marker_filter_from_env(self, captured, monkeypatch):
         monkeypatch.setenv("SCORERIFT_PYTEST_MARKERS", "not slow")
         python_project._check_test_coverage()

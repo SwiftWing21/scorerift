@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import os
 import re
 import subprocess
@@ -16,6 +17,8 @@ from pathlib import Path
 from scorerift import Dimension, Tier
 from scorerift.presets._check_utils import run_tool, tool_available
 
+log = logging.getLogger("scorerift")
+
 # Full-suite runs on real projects routinely take several minutes; 120s
 # produced false timeouts. Override via SCORERIFT_PYTEST_TIMEOUT.
 DEFAULT_PYTEST_TIMEOUT = 600
@@ -23,11 +26,17 @@ DEFAULT_PYTEST_TIMEOUT = 600
 
 def _pytest_timeout() -> int:
     raw = os.environ.get("SCORERIFT_PYTEST_TIMEOUT", "")
+    if not raw:
+        return DEFAULT_PYTEST_TIMEOUT
     try:
         value = int(raw)
     except ValueError:
+        value = 0
+    if value <= 0:
+        log.warning("Invalid SCORERIFT_PYTEST_TIMEOUT=%r; using default %ds",
+                    raw, DEFAULT_PYTEST_TIMEOUT)
         return DEFAULT_PYTEST_TIMEOUT
-    return value if value > 0 else DEFAULT_PYTEST_TIMEOUT
+    return value
 
 
 # ── Check functions ──────────────────────────────────────────────────
