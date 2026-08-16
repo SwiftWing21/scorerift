@@ -102,6 +102,59 @@ class TestReconciliation:
         assert len(divs) == 0
 
 
+class TestToolFailureConfidenceDrop:
+    """Tool-failure samples carry no evidence — they must not trigger divergence.
+
+    Repro: a 9-minute suite times out under the pytest check, the check returns
+    a neutral placeholder, and the dimension's static confidence (0.95) would
+    otherwise still mark it DIVERGED against the manual grade.
+    """
+
+    def test_error_detail_zeroes_confidence_and_divergence(self, tmp_engine):
+        tmp_engine.register(Dimension(
+            name="timed_out",
+            check=lambda: (0.5, {"error": "pytest timed out after 120s", "timeout": True}),
+            confidence=0.95,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.sidecar.set_grade("timed_out", "S")
+        results = tmp_engine.run_tier("light")
+        r = results[0]
+        assert r.divergent is False
+        assert r.auto_confidence == 0.0
+
+    def test_check_exception_does_not_diverge(self, tmp_engine):
+        def broken():
+            raise RuntimeError("boom")
+        tmp_engine.register(Dimension(
+            name="broken", check=broken, confidence=0.95, tier=Tier.LIGHT,
+        ))
+        tmp_engine.sidecar.set_grade("broken", "S")
+        results = tmp_engine.run_tier("light")
+        assert results[0].divergent is False
+        assert results[0].auto_confidence == 0.0
+
+    def test_run_dimension_error_detail_does_not_diverge(self, tmp_engine):
+        tmp_engine.register(Dimension(
+            name="timed_out",
+            check=lambda: (0.5, {"error": "pytest timed out after 120s", "timeout": True}),
+            confidence=0.95,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.sidecar.set_grade("timed_out", "S")
+        r = tmp_engine.run_dimension("timed_out")
+        assert r.divergent is False
+        assert r.auto_confidence == 0.0
+
+    def test_healthy_check_keeps_its_confidence(self, tmp_engine):
+        tmp_engine.register(Dimension(
+            name="healthy", check=lambda: (0.9, {"passed": 9, "total": 10}),
+            confidence=0.95, tier=Tier.LIGHT,
+        ))
+        results = tmp_engine.run_tier("light")
+        assert results[0].auto_confidence == 0.95
+
+
 class TestFeedback:
     def test_record_and_summarize(self, tmp_engine):
         tmp_engine.record_feedback(score=0.8, scope="overall", text="Looks good")

@@ -8,24 +8,50 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
+import subprocess
 from pathlib import Path
 
 from scorerift import Dimension, Tier
 from scorerift.presets._check_utils import run_tool, tool_available
 
+# Full-suite runs on real projects routinely take several minutes; 120s
+# produced false timeouts. Override via SCORERIFT_PYTEST_TIMEOUT.
+DEFAULT_PYTEST_TIMEOUT = 600
+
+
+def _pytest_timeout() -> int:
+    raw = os.environ.get("SCORERIFT_PYTEST_TIMEOUT", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_PYTEST_TIMEOUT
+    return value if value > 0 else DEFAULT_PYTEST_TIMEOUT
+
+
 # ── Check functions ──────────────────────────────────────────────────
 
 def _check_test_coverage() -> tuple[float, dict]:
-    """Run pytest and return pass rate."""
+    """Run pytest and return pass rate.
+
+    SCORERIFT_PYTEST_TIMEOUT overrides the suite timeout (seconds);
+    SCORERIFT_PYTEST_MARKERS passes a `-m` marker expression (e.g. "not slow").
+    """
+    cmd = ["python", "-m", "pytest", "--tb=no", "-q"]
+    markers = os.environ.get("SCORERIFT_PYTEST_MARKERS")
+    if markers:
+        cmd += ["-m", markers]
     try:
-        result = run_tool(["python", "-m", "pytest", "--tb=no", "-q"], timeout=120)  # noqa: S607
+        result = run_tool(cmd, timeout=_pytest_timeout())  # noqa: S607
         passed = int(m.group(1)) if (m := re.search(r"(\d+) passed", result.stdout)) else 0
         failed = int(m.group(1)) if (m := re.search(r"(\d+) failed", result.stdout)) else 0
         total = passed + failed
         return (passed / total if total else 0.0), {"passed": passed, "failed": failed, "total": total}
+    except subprocess.TimeoutExpired as e:
+        return 0.5, {"error": str(e), "timeout": True}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e)}
 
 
 def _check_lint_score() -> tuple[float, dict]:
@@ -40,7 +66,7 @@ def _check_lint_score() -> tuple[float, dict]:
         score = max(0.0, 1.0 - errors * 0.02)
         return score, {"errors": errors}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e)}
 
 
 def _check_type_coverage() -> tuple[float, dict]:
@@ -55,7 +81,7 @@ def _check_type_coverage() -> tuple[float, dict]:
         score = max(0.0, 1.0 - errors * 0.01)
         return score, {"errors": errors}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e)}
 
 
 def _check_dep_freshness() -> tuple[float, dict]:
@@ -121,7 +147,7 @@ def _check_doc_coverage() -> tuple[float, dict]:
             "files_scanned": len(py_files),
         }
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e)}
 
 
 def _check_security() -> tuple[float, dict]:
@@ -239,7 +265,7 @@ def _check_import_hygiene() -> tuple[float, dict]:
         score = max(0.0, 1.0 - violations * 0.03)
         return score, {"violations": violations}
     except Exception as e:
-        return 0.0, {"error": str(e)}
+        return 0.5, {"error": str(e)}
 
 
 # ── Dimension Definitions ────────────────────────────────────────────

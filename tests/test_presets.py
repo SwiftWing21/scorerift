@@ -1,7 +1,11 @@
 """Tests for preset dimension configurations."""
 
+import subprocess
+
+import pytest
+
 from scorerift import Dimension
-from scorerift.presets import PRESETS
+from scorerift.presets import PRESETS, python_project
 
 
 class TestPresetsStructure:
@@ -38,3 +42,102 @@ class TestPresetsStructure:
         for preset_name, dims in PRESETS.items():
             for d in dims:
                 assert 0.0 <= d.confidence <= 1.0, f"{preset_name}.{d.name} confidence out of range"
+
+
+class _FakePytestResult:
+    stdout = "5 passed in 1.23s"
+    stderr = ""
+    returncode = 0
+
+
+class TestCheckFailureNeutrality:
+    """A tool failure is absence of evidence, not evidence of failure.
+
+    Checks must return a neutral 0.5 (matching AuditEngine's own exception
+    fallback), never 0.0, when the tool itself times out or crashes.
+    """
+
+    def test_pytest_timeout_returns_neutral_score(self, monkeypatch):
+        def fake_run_tool(cmd, timeout=60, cwd=None):
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout)
+        monkeypatch.setattr(python_project, "run_tool", fake_run_tool)
+        score, detail = python_project._check_test_coverage()
+        assert score == 0.5
+        assert detail["timeout"] is True
+        assert "error" in detail
+
+    def test_pytest_error_returns_neutral_score(self, monkeypatch):
+        def fake_run_tool(cmd, timeout=60, cwd=None):
+            raise OSError("python not found")
+        monkeypatch.setattr(python_project, "run_tool", fake_run_tool)
+        score, detail = python_project._check_test_coverage()
+        assert score == 0.5
+        assert "error" in detail
+        assert "timeout" not in detail
+
+    @pytest.mark.parametrize("check_name", [
+        "_check_lint_score",
+        "_check_type_coverage",
+        "_check_import_hygiene",
+    ])
+    def test_tool_crash_returns_neutral_score(self, monkeypatch, check_name):
+        monkeypatch.setattr(python_project, "tool_available", lambda name: True)
+
+        def fake_run_tool(cmd, timeout=60, cwd=None):
+            raise OSError("tool crashed")
+        monkeypatch.setattr(python_project, "run_tool", fake_run_tool)
+        score, detail = getattr(python_project, check_name)()
+        assert score == 0.5, f"{check_name} scored a tool crash as {score}"
+        assert "error" in detail
+
+    def test_doc_coverage_error_returns_neutral_score(self, monkeypatch):
+        def boom(*args, **kwargs):
+            raise OSError("filesystem unavailable")
+        monkeypatch.setattr(python_project, "Path", boom)
+        score, detail = python_project._check_doc_coverage()
+        assert score == 0.5
+        assert "error" in detail
+
+
+class TestPytestTimeoutConfig:
+    """The pytest timeout must be configurable; 120s is too short for real suites."""
+
+    @pytest.fixture
+    def captured(self, monkeypatch):
+        calls = {}
+
+        def fake_run_tool(cmd, timeout=60, cwd=None):
+            calls["cmd"] = cmd
+            calls["timeout"] = timeout
+            return _FakePytestResult()
+        monkeypatch.setattr(python_project, "run_tool", fake_run_tool)
+        monkeypatch.delenv("SCORERIFT_PYTEST_TIMEOUT", raising=False)
+        monkeypatch.delenv("SCORERIFT_PYTEST_MARKERS", raising=False)
+        return calls
+
+    def test_default_timeout_is_600(self, captured):
+        python_project._check_test_coverage()
+        assert captured["timeout"] == 600
+
+    def test_env_var_overrides_timeout(self, captured, monkeypatch):
+        monkeypatch.setenv("SCORERIFT_PYTEST_TIMEOUT", "333")
+        python_project._check_test_coverage()
+        assert captured["timeout"] == 333
+
+    def test_invalid_env_var_falls_back_to_default(self, captured, monkeypatch):
+        monkeypatch.setenv("SCORERIFT_PYTEST_TIMEOUT", "not-a-number")
+        python_project._check_test_coverage()
+        assert captured["timeout"] == 600
+
+    def test_marker_filter_from_env(self, captured, monkeypatch):
+        monkeypatch.setenv("SCORERIFT_PYTEST_MARKERS", "not slow")
+        python_project._check_test_coverage()
+        # Look only past "pytest" — the base cmd is `python -m pytest`.
+        args = captured["cmd"][captured["cmd"].index("pytest") + 1:]
+        assert "-m" in args
+        assert args[args.index("-m") + 1] == "not slow"
+
+    def test_no_marker_filter_by_default(self, captured):
+        python_project._check_test_coverage()
+        args = captured["cmd"][captured["cmd"].index("pytest") + 1:]
+        assert "-m" not in args

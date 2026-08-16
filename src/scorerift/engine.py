@@ -32,6 +32,16 @@ DIVERGENCE_THRESHOLD = 0.15
 CONFIDENCE_FLOOR = 0.5
 
 
+def _effective_confidence(confidence: float, auto_detail: dict[str, Any]) -> float:
+    """Confidence for one sample: zero when the check tool itself failed.
+
+    Checks report tool failure via an "error" key and score a neutral 0.5;
+    that placeholder is absence of evidence and must not carry the
+    dimension's static confidence into divergence classification.
+    """
+    return 0.0 if "error" in auto_detail else confidence
+
+
 @dataclass
 class Dimension:
     """A single auditable dimension.
@@ -163,12 +173,14 @@ class AuditEngine:
                         auto_score = 0.5
                         auto_detail = {"error": str(exc)}
 
+                    confidence = _effective_confidence(dim.confidence, auto_detail)
+
                     # Reconciliation via classify_status
                     manual_entry = baseline.get("dimensions", {}).get(name, {})
                     manual_grade = manual_entry.get("grade")
                     manual_score = grade_to_score(manual_grade) if manual_grade else None
                     status = classify_status(
-                        auto_score, manual_score, dim.confidence,
+                        auto_score, manual_score, confidence,
                         self.divergence_threshold, self.confidence_floor,
                     )
                     divergent = status in ("warn", "fail")
@@ -179,7 +191,7 @@ class AuditEngine:
                     # Rich divergence detail
                     manual_evidence = manual_entry.get("notes", "")
                     _status_rich, divergence_detail = classify_status_rich(
-                        auto_score, manual_score, dim.confidence, name,
+                        auto_score, manual_score, confidence, name,
                         auto_evidence=str(auto_detail),
                         manual_evidence=manual_evidence,
                         divergence_threshold=self.divergence_threshold,
@@ -190,7 +202,7 @@ class AuditEngine:
                         name=name,
                         auto_score=auto_score,
                         auto_detail=auto_detail,
-                        auto_confidence=dim.confidence,
+                        auto_confidence=confidence,
                         manual_grade=manual_grade,
                         manual_score=manual_score,
                         divergent=divergent,
@@ -228,11 +240,13 @@ class AuditEngine:
             finally:
                 os.chdir(old_cwd)
 
+        confidence = _effective_confidence(dim.confidence, auto_detail)
+
         manual_entry = baseline.get("dimensions", {}).get(name, {})
         manual_grade = manual_entry.get("grade")
         manual_score = grade_to_score(manual_grade) if manual_grade else None
         status = classify_status(
-            auto_score, manual_score, dim.confidence,
+            auto_score, manual_score, confidence,
             self.divergence_threshold, self.confidence_floor,
         )
         divergent = status in ("warn", "fail")
@@ -240,7 +254,7 @@ class AuditEngine:
         # Rich divergence detail
         manual_evidence = manual_entry.get("notes", "")
         _status_rich, divergence_detail = classify_status_rich(
-            auto_score, manual_score, dim.confidence, name,
+            auto_score, manual_score, confidence, name,
             auto_evidence=str(auto_detail),
             manual_evidence=manual_evidence,
             divergence_threshold=self.divergence_threshold,
@@ -251,7 +265,7 @@ class AuditEngine:
             name=name,
             auto_score=auto_score,
             auto_detail=auto_detail,
-            auto_confidence=dim.confidence,
+            auto_confidence=confidence,
             manual_grade=manual_grade,
             manual_score=manual_score,
             divergent=divergent,
