@@ -389,7 +389,12 @@ class AuditEngine:
         """
         scores = self.latest_scores()
         divergences = self.get_divergences()
-        failing = [r.name for r in scores if is_failing(r.auto_score)]
+        # Tool-failure placeholders score 0.5 with zeroed confidence; an
+        # untrusted score is absence of evidence, not a failing dimension.
+        failing = [
+            r.name for r in scores
+            if is_failing(r.auto_score) and r.auto_confidence >= self.confidence_floor
+        ]
         ratchet_violations = [r.name for r in scores if r.ratchet_violation]
         overall = self.overall_score()
 

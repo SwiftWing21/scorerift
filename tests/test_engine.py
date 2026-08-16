@@ -183,6 +183,19 @@ class TestHealthCheck:
         assert health["ok"] is False
         assert "failing" in health["failing"]
 
+    def test_tool_failure_placeholder_is_not_failing(self, tmp_engine):
+        """A tool-failure neutral 0.5 carries no evidence — it must not fail health."""
+        tmp_engine.register(Dimension(
+            name="timed_out",
+            check=lambda: (0.5, {"error": "pytest timed out after 120s", "timeout": True}),
+            confidence=0.95,
+            tier=Tier.LIGHT,
+        ))
+        tmp_engine.run_tier("light")
+        health = tmp_engine.health_check()
+        assert health["ok"] is True
+        assert "timed_out" not in health["failing"]
+
 
 class TestRelativePathsWithTarget:
     def test_relative_db_resolves_against_invoke_cwd_not_target(self, tmp_path, monkeypatch):
