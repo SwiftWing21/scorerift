@@ -48,13 +48,17 @@ class TestAuditDB:
         assert scores[0].manual_grade == "A"
 
     def test_score_history_filter(self, db):
+        import time
+
         from scorerift.engine import DimensionResult
+        # Dynamic timestamp: a hardcoded date rots out of the 30-day window
+        ts = time.strftime("%Y-%m-%dT%H:%M:%S")
         for name, score in [("alpha", 0.9), ("beta", 0.7)]:
             db.write_score(DimensionResult(
                 name=name, auto_score=score, auto_detail={},
                 auto_confidence=0.8, manual_grade=None, manual_score=None,
                 divergent=False, acknowledged=False, tier="light",
-                timestamp="2026-04-02T00:00:00",
+                timestamp=ts,
             ))
         history = db.score_history(dimension="alpha", days=30)
         assert len(history) == 1
