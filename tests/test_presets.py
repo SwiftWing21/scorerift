@@ -103,6 +103,48 @@ class TestCheckFailureNeutrality:
         assert detail["tool_failure"] is True
 
 
+class TestPytestCollectionFailure:
+    """pytest exiting without a parseable pass/fail count.
+
+    Exit codes 2/3/4 (interrupted / internal error / usage error, e.g. a
+    broken conftest) mean pytest produced no evidence — neutral tool
+    failure. Exit code 5 (no tests collected) IS evidence: the project
+    has no tests, which legitimately scores 0.0.
+    """
+
+    @staticmethod
+    def _fake(returncode, stdout=""):
+        def fake_run_tool(cmd, timeout=60, cwd=None):
+            r = _FakePytestResult()
+            r.returncode = returncode
+            r.stdout = stdout
+            return r
+        return fake_run_tool
+
+    @pytest.mark.parametrize("code", [2, 3, 4])
+    def test_collection_error_is_tool_failure(self, monkeypatch, code):
+        monkeypatch.setattr(python_project, "run_tool",
+                            self._fake(code, "ERROR conftest.py ImportError"))
+        score, detail = python_project._check_test_coverage()
+        assert score == 0.5
+        assert detail["tool_failure"] is True
+        assert "error" in detail
+
+    def test_no_tests_collected_scores_zero(self, monkeypatch):
+        monkeypatch.setattr(python_project, "run_tool",
+                            self._fake(5, "no tests ran in 0.01s"))
+        score, detail = python_project._check_test_coverage()
+        assert score == 0.0
+        assert "tool_failure" not in detail
+        assert detail["total"] == 0
+
+    def test_exit_zero_but_unparseable_is_tool_failure(self, monkeypatch):
+        monkeypatch.setattr(python_project, "run_tool", self._fake(0, "garbage"))
+        score, detail = python_project._check_test_coverage()
+        assert score == 0.5
+        assert detail["tool_failure"] is True
+
+
 class TestMissingToolNeutrality:
     """A tool that is not installed cannot produce evidence.
 

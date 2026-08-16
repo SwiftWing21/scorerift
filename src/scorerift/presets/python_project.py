@@ -47,7 +47,15 @@ def _check_test_coverage() -> tuple[float, dict]:
         passed = int(m.group(1)) if (m := re.search(r"(\d+) passed", result.stdout)) else 0
         failed = int(m.group(1)) if (m := re.search(r"(\d+) failed", result.stdout)) else 0
         total = passed + failed
-        return (passed / total if total else 0.0), {"passed": passed, "failed": failed, "total": total}
+        if total == 0:
+            # Exit 5 = no tests collected: genuine evidence of zero coverage.
+            if result.returncode == 5:
+                return 0.0, {"passed": 0, "failed": 0, "total": 0,
+                             "note": "no tests collected"}
+            # Broken conftest, usage error, pytest internal error: no evidence.
+            return 0.5, {"error": f"pytest exit {result.returncode} with no parseable results",
+                         "stdout_tail": result.stdout[-300:], "tool_failure": True}
+        return passed / total, {"passed": passed, "failed": failed, "total": total}
     except subprocess.TimeoutExpired as e:
         return 0.5, {"error": str(e), "timeout": True, "tool_failure": True}
     except Exception as e:
