@@ -57,7 +57,7 @@ def _check_test_coverage() -> tuple[float, dict]:
 def _check_lint_score() -> tuple[float, dict]:
     """Run ruff and score based on error count."""
     if not tool_available("ruff"):
-        return 0.5, {"note": "ruff not installed"}
+        return 0.5, {"note": "ruff not installed", "tool_failure": True}
     try:
         result = run_tool(["ruff", "check", ".", "--statistics", "-q"], timeout=60)  # noqa: S607
         if result.returncode == 0:
@@ -72,7 +72,7 @@ def _check_lint_score() -> tuple[float, dict]:
 def _check_type_coverage() -> tuple[float, dict]:
     """Run mypy and score based on error count."""
     if not tool_available("mypy"):
-        return 0.5, {"note": "mypy not installed"}
+        return 0.5, {"note": "mypy not installed", "tool_failure": True}
     try:
         result = run_tool(["mypy", ".", "--no-error-summary"], timeout=120)  # noqa: S607
         if result.returncode == 0:
@@ -89,7 +89,7 @@ def _check_dep_freshness() -> tuple[float, dict]:
     try:
         result = run_tool(["pip", "list", "--outdated", "--format=json"], timeout=30)  # noqa: S607
         if result.returncode != 0:
-            return 0.5, {"note": "pip list failed", "stderr": result.stderr[:200]}
+            return 0.5, {"note": "pip list failed", "stderr": result.stderr[:200], "tool_failure": True}
         outdated = json.loads(result.stdout) if result.stdout.strip() else []
         total_pkgs = len(json.loads(
             run_tool(["pip", "list", "--format=json"], timeout=15).stdout  # noqa: S607
@@ -176,7 +176,7 @@ def _check_security() -> tuple[float, dict]:
             score = max(0.0, 1.0 - findings * 0.05)
             return score, {"tool": "ruff-S", "findings": findings}
 
-        return 0.5, {"note": "Neither semgrep nor ruff available for security scanning"}
+        return 0.5, {"note": "Neither semgrep nor ruff available for security scanning", "tool_failure": True}
     except Exception as e:
         return 0.5, {"error": str(e), "tool_failure": True}
 
@@ -253,7 +253,7 @@ def _check_complexity() -> tuple[float, dict]:
 def _check_import_hygiene() -> tuple[float, dict]:
     """Check for import order violations and unused imports via ruff."""
     if not tool_available("ruff"):
-        return 0.5, {"note": "ruff not installed"}
+        return 0.5, {"note": "ruff not installed", "tool_failure": True}
     try:
         result = run_tool(
             ["ruff", "check", ".", "--select", "I,F401", "--statistics", "-q"],  # noqa: S607

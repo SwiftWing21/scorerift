@@ -103,6 +103,38 @@ class TestCheckFailureNeutrality:
         assert detail["tool_failure"] is True
 
 
+class TestMissingToolNeutrality:
+    """A tool that is not installed cannot produce evidence.
+
+    Its neutral 0.5 must carry the tool_failure sentinel so the engine
+    zeroes confidence instead of hard-failing health on a bare machine.
+    """
+
+    @pytest.mark.parametrize("check_name", [
+        "_check_lint_score",
+        "_check_type_coverage",
+        "_check_security",
+        "_check_import_hygiene",
+    ])
+    def test_missing_tool_is_tool_failure(self, monkeypatch, check_name):
+        monkeypatch.setattr(python_project, "tool_available", lambda name: False)
+        score, detail = getattr(python_project, check_name)()
+        assert score == 0.5
+        assert detail["tool_failure"] is True
+        assert "note" in detail
+
+    def test_pip_list_failure_is_tool_failure(self, monkeypatch):
+        def fake_run_tool(cmd, timeout=60, cwd=None):
+            r = _FakePytestResult()
+            r.returncode = 1
+            r.stderr = "pip exploded"
+            return r
+        monkeypatch.setattr(python_project, "run_tool", fake_run_tool)
+        score, detail = python_project._check_dep_freshness()
+        assert score == 0.5
+        assert detail["tool_failure"] is True
+
+
 class TestPytestTimeoutConfig:
     """The pytest timeout must be configurable; 120s is too short for real suites."""
 
